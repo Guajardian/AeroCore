@@ -584,6 +584,152 @@
     margin-top: 20px;
     font-family: 'JetBrains Mono', monospace;
   }
+
+  /* ── Settings modal ── */
+  .modal-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.6);
+    z-index: 1000;
+    align-items: center;
+    justify-content: center;
+    backdrop-filter: blur(4px);
+  }
+  .modal-overlay.open { display: flex; }
+  .modal-card {
+    background: #12151c;
+    border: 1px solid #1e2230;
+    border-radius: 12px;
+    width: 440px;
+    max-width: 92vw;
+    max-height: 85vh;
+    overflow-y: auto;
+    animation: modalIn 0.2s ease;
+  }
+  @keyframes modalIn {
+    from { opacity: 0; transform: scale(0.95) translateY(10px); }
+    to { opacity: 1; transform: scale(1) translateY(0); }
+  }
+  .modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 20px 24px 0;
+  }
+  .modal-close {
+    background: none;
+    border: none;
+    color: #6b7280;
+    font-size: 22px;
+    cursor: pointer;
+    padding: 0 4px;
+    line-height: 1;
+    transition: color 0.2s;
+  }
+  .modal-close:hover { color: #e2e6ee; }
+  .modal-body { padding: 20px 24px 24px; }
+  .modal-section {
+    border-top: 1px solid #1e2230;
+    padding-top: 16px;
+    margin-top: 16px;
+  }
+  .modal-section:first-child { border-top: none; margin-top: 0; padding-top: 0; }
+  .modal-section-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: #e2e6ee;
+    margin-bottom: 12px;
+  }
+  .modal-field {
+    margin-bottom: 12px;
+  }
+  .modal-field label {
+    display: block;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: #6b7280;
+    margin-bottom: 6px;
+  }
+  .modal-field input[type="password"],
+  .modal-field input[type="number"],
+  .modal-field select {
+    width: 100%;
+    padding: 10px 12px;
+    background: #0a0c10;
+    border: 1px solid #1e2230;
+    border-radius: 8px;
+    color: #e2e6ee;
+    font-family: 'Outfit', sans-serif;
+    font-size: 14px;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  .modal-field input:focus,
+  .modal-field select:focus { border-color: #3b82f6; }
+  .modal-field select {
+    cursor: pointer;
+    -webkit-appearance: none;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    padding-right: 32px;
+  }
+  .modal-radio-row {
+    display: flex;
+    gap: 20px;
+  }
+  .modal-radio {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+    color: #c8ccd4;
+    cursor: pointer;
+    text-transform: none;
+    letter-spacing: 0;
+    font-weight: 400;
+    margin-bottom: 0;
+  }
+  .modal-radio input[type="radio"] {
+    accent-color: #3b82f6;
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+  }
+  .modal-msg {
+    font-size: 13px;
+    padding: 8px 12px;
+    border-radius: 8px;
+    margin-bottom: 12px;
+    display: none;
+  }
+  .modal-msg.error {
+    display: block;
+    background: rgba(239,68,68,0.1);
+    border: 1px solid rgba(239,68,68,0.3);
+    color: #f87171;
+  }
+  .modal-msg.success {
+    display: block;
+    background: rgba(34,197,94,0.1);
+    border: 1px solid rgba(34,197,94,0.3);
+    color: #22c55e;
+  }
+
+  /* ── Light theme: modal ── */
+  html.light .modal-overlay { background: rgba(0,0,0,0.3); }
+  html.light .modal-card { background: #fff; border-color: #e5e7eb; }
+  html.light .modal-close { color: #9ca3af; }
+  html.light .modal-close:hover { color: #374151; }
+  html.light .modal-section { border-color: #e5e7eb; }
+  html.light .modal-section-title { color: #1f2937; }
+  html.light .modal-field input,
+  html.light .modal-field select { background: #f9fafb; border-color: #e5e7eb; color: #1f2937; }
+  html.light .modal-radio { color: #374151; }
 </style>
 </head>
 <body>
@@ -597,6 +743,9 @@
   <div class="header-right">
     <button class="theme-btn" id="theme-toggle" onclick="toggleTheme()" title="Toggle theme">
       <svg id="theme-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+    </button>
+    <button class="theme-btn" onclick="openSettingsModal()" title="User settings">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
     </button>
     <a href="/logout" class="logout-btn">Log out</a>
   </div>
@@ -767,6 +916,82 @@
 
 </div>
 
+<!-- Settings modal -->
+<div class="modal-overlay" id="settings-modal">
+  <div class="modal-card">
+    <div class="modal-header">
+      <div class="section-title" style="margin-bottom:0">User settings</div>
+      <button class="modal-close" onclick="closeSettingsModal()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <!-- Change password -->
+      <div class="modal-section">
+        <div class="modal-section-title">Change password</div>
+        <div class="modal-msg" id="pw-msg"></div>
+        <div class="modal-field">
+          <label>Current password</label>
+          <input type="password" id="pw-current" autocomplete="current-password">
+        </div>
+        <div class="modal-field">
+          <label>New password</label>
+          <input type="password" id="pw-new" autocomplete="new-password">
+        </div>
+        <div class="modal-field">
+          <label>Confirm new password</label>
+          <input type="password" id="pw-confirm" autocomplete="new-password">
+        </div>
+        <button class="save-btn" style="width:auto;margin-top:4px" onclick="changePassword()">Update password</button>
+      </div>
+
+      <!-- Temperature unit -->
+      <div class="modal-section">
+        <div class="modal-section-title">Temperature unit</div>
+        <div class="modal-radio-row">
+          <label class="modal-radio">
+            <input type="radio" name="temp-unit" value="C" checked> °C (Celsius)
+          </label>
+          <label class="modal-radio">
+            <input type="radio" name="temp-unit" value="F"> °F (Fahrenheit)
+          </label>
+        </div>
+      </div>
+
+      <!-- Dashboard refresh rate -->
+      <div class="modal-section">
+        <div class="modal-section-title">Dashboard refresh rate</div>
+        <div class="modal-field">
+          <label>Live data polling interval</label>
+          <select id="refresh-rate">
+            <option value="2000">2 seconds</option>
+            <option value="5000" selected>5 seconds (default)</option>
+            <option value="10000">10 seconds</option>
+            <option value="30000">30 seconds</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Temperature alert -->
+      <div class="modal-section">
+        <div class="modal-section-title">Temperature alert</div>
+        <div class="modal-field" style="display:flex;align-items:center;gap:12px">
+          <label class="toggle" style="flex-shrink:0">
+            <input type="checkbox" id="alert-enabled">
+            <span class="toggle-slider"></span>
+          </label>
+          <span style="font-size:13px">Enable browser notifications</span>
+        </div>
+        <div class="modal-field">
+          <label>Alert when temperature exceeds</label>
+          <div style="display:flex;align-items:center;gap:8px">
+            <input type="number" id="alert-temp" value="50" step="1" style="width:100px">
+            <span class="setting-hint" id="alert-unit-label">°C</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script>
   // Chart setup
@@ -838,12 +1063,14 @@
     try {
       const res = await fetch('/api/data');
       const d = await res.json();
-      document.getElementById('temp').textContent = d.temp;
+      document.getElementById('temp').textContent = convertTemp(d.temp);
+      document.querySelector('.stat-card.temp .stat-unit').textContent = getTempUnit();
       document.getElementById('humidity').textContent = d.humidity;
       document.getElementById('pressure').textContent = d.pressure;
       document.getElementById('fan-speed').textContent = d.fan_speed;
       document.getElementById('fan-bar').style.width = d.fan_speed + '%';
       document.getElementById('timestamp').textContent = d.timestamp;
+      checkTempAlert(d.temp);
     } catch(e) {
       console.error('Fetch error:', e);
     }
@@ -855,7 +1082,8 @@
       const res = await fetch('/api/history');
       const data = await res.json();
       chart.data.labels = data.map(d => d.time);
-      chart.data.datasets[0].data = data.map(d => d.temp);
+      chart.data.datasets[0].data = data.map(d => convertTemp(d.temp));
+      chart.data.datasets[0].label = 'Temperature (' + getTempUnit() + ')';
       chart.data.datasets[1].data = data.map(d => d.fan_speed);
       chart.update('none');
     } catch(e) {
@@ -918,7 +1146,6 @@
   initAdmin();
 
   // Poll
-  setInterval(fetchData, 5000);
   setInterval(fetchHistory, 30000);
   setInterval(fetchSystemStats, 30000);
 
@@ -1109,10 +1336,166 @@
     try {
       const res = await fetch('/api/system');
       const s = await res.json();
-      document.getElementById('cpu-temp').textContent = s.cpu_temp;
+      document.getElementById('cpu-temp').textContent = convertTemp(s.cpu_temp);
+      document.querySelector('.sys-item:first-child .sys-unit').textContent = getTempUnit();
       document.getElementById('sys-uptime').textContent = s.uptime;
       document.getElementById('sys-mem').textContent = s.mem_used + ' / ' + s.mem_total + ' MB';
     } catch(e) { console.error('System stats error:', e); }
+  }
+
+  // ── Settings modal ──
+  function openSettingsModal() {
+    document.getElementById('settings-modal').classList.add('open');
+    loadUserSettings();
+  }
+
+  function closeSettingsModal() {
+    document.getElementById('settings-modal').classList.remove('open');
+    // Clear password fields
+    document.getElementById('pw-current').value = '';
+    document.getElementById('pw-new').value = '';
+    document.getElementById('pw-confirm').value = '';
+    document.getElementById('pw-msg').className = 'modal-msg';
+  }
+
+  // Close modal on overlay click
+  document.getElementById('settings-modal').addEventListener('click', function(e) {
+    if (e.target === this) closeSettingsModal();
+  });
+
+  // Close modal on Escape key
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') closeSettingsModal();
+  });
+
+  function loadUserSettings() {
+    // Temperature unit
+    const unit = localStorage.getItem('sparkfan-temp-unit') || 'C';
+    document.querySelectorAll('input[name="temp-unit"]').forEach(r => {
+      r.checked = r.value === unit;
+    });
+    document.getElementById('alert-unit-label').textContent = unit === 'F' ? '°F' : '°C';
+
+    // Refresh rate
+    const rate = localStorage.getItem('sparkfan-refresh-rate') || '5000';
+    document.getElementById('refresh-rate').value = rate;
+
+    // Temperature alert
+    const alertEnabled = localStorage.getItem('sparkfan-alert-enabled') === 'true';
+    document.getElementById('alert-enabled').checked = alertEnabled;
+    const alertTemp = localStorage.getItem('sparkfan-alert-temp') || '50';
+    document.getElementById('alert-temp').value = alertTemp;
+  }
+
+  // Change password
+  async function changePassword() {
+    const current = document.getElementById('pw-current').value;
+    const newPw = document.getElementById('pw-new').value;
+    const confirm = document.getElementById('pw-confirm').value;
+    const msgEl = document.getElementById('pw-msg');
+
+    if (!current || !newPw) {
+      msgEl.textContent = 'All fields are required';
+      msgEl.className = 'modal-msg error';
+      return;
+    }
+    if (newPw !== confirm) {
+      msgEl.textContent = 'New passwords do not match';
+      msgEl.className = 'modal-msg error';
+      return;
+    }
+    if (newPw.length < 4) {
+      msgEl.textContent = 'Password must be at least 4 characters';
+      msgEl.className = 'modal-msg error';
+      return;
+    }
+    try {
+      const res = await fetch('/api/change-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ current_password: current, new_password: newPw })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        msgEl.textContent = data.error;
+        msgEl.className = 'modal-msg error';
+        return;
+      }
+      msgEl.textContent = 'Password updated successfully';
+      msgEl.className = 'modal-msg success';
+      document.getElementById('pw-current').value = '';
+      document.getElementById('pw-new').value = '';
+      document.getElementById('pw-confirm').value = '';
+    } catch(e) {
+      msgEl.textContent = 'Failed to update password';
+      msgEl.className = 'modal-msg error';
+    }
+  }
+
+  // Temperature unit
+  document.querySelectorAll('input[name="temp-unit"]').forEach(r => {
+    r.addEventListener('change', function() {
+      localStorage.setItem('sparkfan-temp-unit', this.value);
+      document.getElementById('alert-unit-label').textContent = this.value === 'F' ? '°F' : '°C';
+      fetchData(); // Refresh displayed values
+    });
+  });
+
+  function convertTemp(celsius) {
+    const unit = localStorage.getItem('sparkfan-temp-unit') || 'C';
+    if (unit === 'F') return Math.round((celsius * 9/5 + 32) * 10) / 10;
+    return celsius;
+  }
+
+  function getTempUnit() {
+    return (localStorage.getItem('sparkfan-temp-unit') || 'C') === 'F' ? '°F' : '°C';
+  }
+
+  // Dashboard refresh rate
+  let dataInterval = setInterval(fetchData, 5000);
+  document.getElementById('refresh-rate').addEventListener('change', function() {
+    const rate = parseInt(this.value);
+    localStorage.setItem('sparkfan-refresh-rate', rate);
+    clearInterval(dataInterval);
+    dataInterval = setInterval(fetchData, rate);
+  });
+
+  // Restore saved refresh rate on load
+  (function restoreRefreshRate() {
+    const saved = localStorage.getItem('sparkfan-refresh-rate');
+    if (saved) {
+      clearInterval(dataInterval);
+      dataInterval = setInterval(fetchData, parseInt(saved));
+    }
+  })();
+
+  // Temperature alert
+  document.getElementById('alert-enabled').addEventListener('change', function() {
+    localStorage.setItem('sparkfan-alert-enabled', this.checked);
+    if (this.checked && 'Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission();
+    }
+  });
+  document.getElementById('alert-temp').addEventListener('change', function() {
+    localStorage.setItem('sparkfan-alert-temp', this.value);
+  });
+
+  let lastAlertTime = 0;
+  function checkTempAlert(tempC) {
+    if (localStorage.getItem('sparkfan-alert-enabled') !== 'true') return;
+    const threshold = parseFloat(localStorage.getItem('sparkfan-alert-temp') || '50');
+    const unit = localStorage.getItem('sparkfan-temp-unit') || 'C';
+    const compare = unit === 'F' ? convertTemp(tempC) : tempC;
+    const now = Date.now();
+    if (compare >= threshold && now - lastAlertTime > 60000) {
+      lastAlertTime = now;
+      if ('Notification' in window && Notification.permission === 'granted') {
+        new Notification('SparkFan — Temperature Alert', {
+          body: 'Temperature reached ' + compare + (unit === 'F' ? '°F' : '°C'),
+          icon: '🌡️'
+        });
+      }
+    }
   }
 </script>
 

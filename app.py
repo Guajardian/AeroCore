@@ -70,7 +70,7 @@ def save_users(users):
         json.dump(users, f, indent=2)
 
 # ─── App setup ───
-app = Flask(__name__)
+app = Flask(__name__, template_folder=".")
 app.secret_key = os.urandom(24)
 
 login_manager = LoginManager()
@@ -287,6 +287,29 @@ def api_users_delete(username):
     if len(users) <= 1:
         return jsonify({"error": "Cannot delete the last user"}), 400
     del users[username]
+    save_users(users)
+    return jsonify({"status": "ok"})
+
+# ─── Change password (any user) ───
+@app.route("/api/change-password", methods=["POST"])
+@login_required
+def api_change_password():
+    data = request.get_json()
+    current_pw = data.get("current_password", "").strip()
+    new_pw = data.get("new_password", "").strip()
+    if not current_pw or not new_pw:
+        return jsonify({"error": "Current and new password required"}), 400
+    if len(new_pw) < 4:
+        return jsonify({"error": "New password must be at least 4 characters"}), 400
+    users = load_users()
+    username = current_user.id
+    if username not in users:
+        return jsonify({"error": "User not found"}), 404
+    pw_hash = users[username]["password"] if isinstance(users[username], dict) else users[username]
+    if not bcrypt.checkpw(current_pw.encode(), pw_hash.encode()):
+        return jsonify({"error": "Current password is incorrect"}), 403
+    hashed = bcrypt.hashpw(new_pw.encode(), bcrypt.gensalt()).decode()
+    users[username]["password"] = hashed
     save_users(users)
     return jsonify({"status": "ok"})
 
