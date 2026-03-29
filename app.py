@@ -1,6 +1,7 @@
 import os
 import json
 import time
+import subprocess
 import threading
 from datetime import datetime
 from collections import deque
@@ -20,6 +21,9 @@ USERS_FILE = os.path.join(os.path.dirname(__file__), "users.json")
 SECRET_FILE = os.path.join(os.path.dirname(__file__), ".secret_key")
 
 DEFAULT_CONFIG = {
+    "gpio_pin": 18,
+    "pwm_freq": 25000,
+    "bme280_address": "0x76",
     "temp_low": 25.0,
     "temp_high": 45.0,
     "min_duty": 20,
@@ -105,16 +109,38 @@ def load_user(username):
     return None
 
 # ─── Hardware setup ───
-i2c = board.I2C()
-bme = adafruit_bme280.Adafruit_BME280_I2C(i2c, address=0x76)
+config = load_config()
 
-GPIO.setmode(GPIO.BCM)
-GPIO.setup(18, GPIO.OUT)
-pwm = GPIO.PWM(18, 25000)
-pwm.start(0)
+try:
+    bme_addr_str = config.get("bme280_address", "0x76")
+    bme_address = int(bme_addr_str, 16)
+except ValueError:
+    print(f"Invalid bme280_address '{bme_addr_str}' in config — using default 0x76")
+    bme_address = 0x76
+
+try:
+    i2c = board.I2C()
+    bme = adafruit_bme280.Adafruit_BME280_I2C(i2c, address=bme_address)
+except Exception as e:
+    print(f"BME280 sensor init failed: {e}")
+    print("Check that I2C is enabled (sudo raspi-config) and the sensor is connected.")
+    print(f"Expected I2C address: {hex(bme_address)} — verify with: i2cdetect -y 1")
+    raise SystemExit(1)
+
+gpio_pin = config.get("gpio_pin", 18)
+pwm_freq = config.get("pwm_freq", 25000)
+try:
+    GPIO.setmode(GPIO.BCM)
+    GPIO.setup(gpio_pin, GPIO.OUT)
+    pwm = GPIO.PWM(gpio_pin, pwm_freq)
+    pwm.start(0)
+except Exception as e:
+    print(f"GPIO/PWM init failed on pin {gpio_pin}: {e}")
+    print("Check that the pin is valid and not in use. You may need to run with sudo")
+    print("or add your user to the gpio group: sudo usermod -aG gpio $USER")
+    raise SystemExit(1)
 
 # ─── State ───
-config = load_config()
 history = deque(maxlen=8640)  # 12 hours at 5s intervals
 override = {"enabled": False, "speed": 50}
 current_data = {
@@ -274,8 +300,8 @@ def api_users_add():
         role = "user"
     if not username or not password:
         return jsonify({"error": "Username and password required"}), 400
-    if len(password) < 4:
-        return jsonify({"error": "Password must be at least 4 characters"}), 400
+    if len(password) < 8:
+        return jsonify({"error": "Password must be at least 8 characters"}), 400
     users = load_users()
     if username in users:
         return jsonify({"error": "User already exists"}), 409
@@ -309,8 +335,8 @@ def api_change_password():
     new_pw = data.get("new_password", "").strip()
     if not current_pw or not new_pw:
         return jsonify({"error": "Current and new password required"}), 400
-    if len(new_pw) < 4:
-        return jsonify({"error": "New password must be at least 4 characters"}), 400
+    if len(new_pw) < 8:
+        return jsonify({"error": "New password must be at least 8 characters"}), 400
     users = load_users()
     username = current_user.id
     if username not in users:
@@ -369,7 +395,10 @@ def api_override():
         if "speed" in data:
             override["speed"] = max(0, min(100, int(data["speed"])))
         if override["enabled"]:
-            pwm.ChangeDutyCycle(override["speed"])
+            try:
+                pwm.ChangeDutyCycle(override["speed"])
+            except Exception as e:
+                return jsonify({"error": f"PWM control failed: {e}"}), 500
         return jsonify({"status": "ok", "override": override})
     return jsonify(override)
 
@@ -387,6 +416,50 @@ def api_profile_apply(name):
     override["enabled"] = False
     save_config(config)
     return jsonify({"status": "ok", "config": config})
+
+# ─── Update (admin only) ───
+@app.route("/api/update", methods=["POST"])
+@login_required
+def api_update():
+    if not current_user.is_admin:
+        return jsonify({"error": "Admin access required"}), 403
+    try:
+        project_dir = os.path.dirname(os.path.abspath(__file__))
+        # Check for updates
+        subprocess.run(["git", "fetch"], cwd=project_dir, check=True,
+                       capture_output=True, timeout=30)
+        local = subprocess.run(["git", "rev-parse", "HEAD"], cwd=project_dir,
+                               capture_output=True, text=True, check=True).stdout.strip()
+        remote = subprocess.run(["git", "rev-parse", "origin/main"], cwd=project_dir,
+                                capture_output=True, text=True, check=True).stdout.strip()
+        if local == remote:
+            return jsonify({"status": "ok", "message": "Already up to date", "updated": False})
+        # Pull updates
+        pull = subprocess.run(["git", "pull", "origin", "main"], cwd=project_dir,
+                              capture_output=True, text=True, check=True, timeout=60)
+        # Update dependencies
+        subprocess.run(["pip", "install", "-r", "requirements.txt", "--quiet"],
+                       cwd=project_dir, capture_output=True, timeout=120)
+        return jsonify({"status": "ok", "message": "Update complete. Restart to apply.",
+                        "updated": True, "output": pull.stdout.strip()})
+    except subprocess.TimeoutExpired:
+        return jsonify({"error": "Update timed out"}), 504
+    except subprocess.CalledProcessError as e:
+        return jsonify({"error": "Update failed", "details": e.stderr.strip() if e.stderr else str(e)}), 500
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/restart", methods=["POST"])
+@login_required
+def api_restart():
+    if not current_user.is_admin:
+        return jsonify({"error": "Admin access required"}), 403
+    try:
+        subprocess.Popen(["sudo", "systemctl", "restart", "aerocore"],
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return jsonify({"status": "ok", "message": "Restarting..."})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 # ─── Start ───
 if __name__ == "__main__":

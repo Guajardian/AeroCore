@@ -912,6 +912,18 @@
     <ul class="user-list" id="user-list"></ul>
   </div>
 
+  <!-- System update (admin only) -->
+  <div class="users-section" id="update-section" style="display:none">
+    <div class="users-header">
+      <div class="section-title" style="margin-bottom:0">System update</div>
+    </div>
+    <div class="user-msg" id="update-msg"></div>
+    <div class="save-row" style="gap:8px">
+      <button class="save-btn" id="update-btn" onclick="checkForUpdate()">Check for updates</button>
+      <button class="save-btn" id="restart-btn" onclick="restartService()" style="background:#22c55e;display:none">Restart to apply</button>
+    </div>
+  </div>
+
   <div class="last-updated">Last updated: <span id="timestamp">--</span></div>
 
 </div>
@@ -1159,6 +1171,7 @@
       isAdmin = me.role === 'admin';
       if (isAdmin) {
         document.getElementById('users-section').style.display = '';
+        document.getElementById('update-section').style.display = '';
         loadUsers();
       }
     } catch(e) { console.error('Me error:', e); }
@@ -1343,6 +1356,51 @@
     } catch(e) { console.error('System stats error:', e); }
   }
 
+  // ── System update ──
+  function showUpdateMsg(text, type) {
+    const el = document.getElementById('update-msg');
+    el.textContent = text;
+    el.className = 'user-msg ' + type;
+  }
+
+  async function checkForUpdate() {
+    const btn = document.getElementById('update-btn');
+    btn.disabled = true;
+    btn.textContent = 'Checking...';
+    showUpdateMsg('Checking for updates...', 'success');
+    try {
+      const res = await fetch('/api/update', { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) {
+        showUpdateMsg(data.error + (data.details ? ': ' + data.details : ''), 'error');
+        return;
+      }
+      if (data.updated) {
+        showUpdateMsg(data.message, 'success');
+        document.getElementById('restart-btn').style.display = '';
+      } else {
+        showUpdateMsg(data.message, 'success');
+        setTimeout(() => { document.getElementById('update-msg').className = 'user-msg'; }, 3000);
+      }
+    } catch(e) {
+      showUpdateMsg('Failed to check for updates', 'error');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Check for updates';
+    }
+  }
+
+  async function restartService() {
+    if (!confirm('Restart AeroCore service? The dashboard will briefly disconnect.')) return;
+    try {
+      await fetch('/api/restart', { method: 'POST' });
+      showUpdateMsg('Restarting... page will reload in a few seconds.', 'success');
+      setTimeout(() => { location.reload(); }, 5000);
+    } catch(e) {
+      showUpdateMsg('Failed to restart service', 'error');
+    }
+  }
+
   // ── Settings modal ──
   function openSettingsModal() {
     document.getElementById('settings-modal').classList.add('open');
@@ -1404,8 +1462,8 @@
       msgEl.className = 'modal-msg error';
       return;
     }
-    if (newPw.length < 4) {
-      msgEl.textContent = 'Password must be at least 4 characters';
+    if (newPw.length < 8) {
+      msgEl.textContent = 'Password must be at least 8 characters';
       msgEl.className = 'modal-msg error';
       return;
     }

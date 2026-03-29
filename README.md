@@ -21,14 +21,16 @@ A Raspberry Pi-powered smart fan controller with a live web dashboard. AeroCore 
 - **User authentication** — Secure login with bcrypt-hashed passwords
 - **User management** — Add and remove users from the admin panel
 - **First-run setup** — Guided admin account creation on first launch
+- **Self-update** — Update from the dashboard, command line, or a remote one-liner
+- **Configurable hardware** — GPIO pin, PWM frequency, and BME280 address stored in `config.json` (survives updates)
 
 ## Hardware
 
 | Component | Details |
 |-----------|---------|
 | **Board** | Raspberry Pi (any model with GPIO + I2C) |
-| **Sensor** | BME280 (I2C, address `0x76`) |
-| **Fan** | 4-pin PWM fan on GPIO 18 (25 kHz) |
+| **Sensor** | BME280 (I2C, address `0x76` by default — configurable) |
+| **Fan** | 4-pin PWM fan on GPIO 18 (configurable) |
 
 ### Wiring
 
@@ -57,12 +59,27 @@ GND  ────────── GND (shared with Pi)
 
 ## Installation
 
+**One-liner (recommended):**
+
+```bash
+curl -sSL https://raw.githubusercontent.com/Guajardian/AeroCore/main/install.sh | bash
+```
+
+This automatically clones the repo, creates a virtual environment, installs dependencies, checks I2C, and optionally sets up a systemd service to start on boot.
+
+Open `http://<pi-ip>:5000` in your browser. On first launch you'll be prompted to create an admin account.
+
+<details>
+<summary><strong>Manual installation</strong></summary>
+
 ```bash
 # Clone the repo
-git clone https://github.com/<your-username>/AeroCore.git
+git clone https://github.com/Guajardian/AeroCore.git
 cd AeroCore
 
-# Install dependencies
+# Create a virtual environment and install dependencies
+python3 -m venv venv
+source venv/bin/activate
 pip install -r requirements.txt
 
 # Enable I2C on your Pi (if not already)
@@ -72,16 +89,19 @@ sudo raspi-config  # Interface Options → I2C → Enable
 python app.py
 ```
 
-Open `http://<pi-ip>:5000` in your browser. On first launch you'll be prompted to create an admin account.
+> **Note:** Always activate the virtual environment (`source venv/bin/activate`) before running AeroCore. The systemd service example below handles this automatically.
 
-> **Tip:** `RPi.GPIO` is pre-installed on Raspberry Pi OS. If you're on a minimal image and get an import error, `pip install RPi.GPIO` will fix it.
+</details>
 
 ## Configuration
 
-Fan curve settings are stored in `config.json` and can be changed from the dashboard:
+Fan curve and hardware settings are stored in `config.json`. Fan curve settings can be changed from the dashboard; hardware settings (`gpio_pin`, `pwm_freq`, `bme280_address`) are edited in `config.json` directly:
 
 | Setting | Default | Description |
 |---------|---------|-------------|
+| `gpio_pin` | 18 | GPIO pin for the PWM fan signal (BCM numbering) |
+| `pwm_freq` | 25000 | PWM frequency in Hz (25 kHz is standard for 4-pin fans) |
+| `bme280_address` | `"0x76"` | I2C address of the BME280 sensor (`"0x76"` or `"0x77"`) |
 | `temp_low` | 25.0 °C | Fans off below this temperature |
 | `temp_high` | 45.0 °C | 100% fan speed at this temperature |
 | `min_duty` | 20% | Minimum duty cycle when fans are active |
@@ -90,33 +110,48 @@ Fan curve settings are stored in `config.json` and can be changed from the dashb
 | `humidity_high` | 70% | Humidity threshold for fan trigger |
 | `active_profile` | default | Currently active fan profile |
 
+> **Note:** Changes to `gpio_pin`, `pwm_freq`, and `bme280_address` require a service restart to take effect. All other settings apply immediately.
+
 ## Customization
 
 ### BME280 I2C Address
 
-The default I2C address is `0x76`. If your sensor uses `0x77`, change this line in `app.py`:
+The default I2C address is `0x76`. If your sensor uses `0x77`, update `config.json`:
 
-```python
-bme = adafruit_bme280.Adafruit_BME280_I2C(i2c, address=0x76)  # ← change to 0x77
+```json
+"bme280_address": "0x77"
 ```
 
 You can verify your sensor's address with `i2cdetect -y 1`.
 
 ### PWM GPIO Pin
 
-The fan PWM signal defaults to **GPIO 18**. To use a different pin, update these lines in `app.py`:
+The fan PWM signal defaults to **GPIO 18**. To use a different pin, update `config.json`:
 
-```python
-GPIO.setup(18, GPIO.OUT)    # ← change pin number
-pwm = GPIO.PWM(18, 25000)   # ← change pin number
+```json
+"gpio_pin": 12
 ```
+
+### PWM Frequency
+
+The PWM frequency controls how fast the GPIO pin switches on and off to regulate fan speed. The default is **25,000 Hz (25 kHz)**, which is the industry standard defined by Intel's 4-pin PWM fan specification. At this frequency, the fan runs silently with no audible whine.
+
+Most users should **never need to change this**. However, if you're using a non-standard fan (e.g., a 2-wire or 3-wire fan driven through a MOSFET), a lower frequency may work better. Lower values like 1,000 Hz can cause an audible buzzing noise.
+
+To change it, update `config.json`:
+
+```json
+"pwm_freq": 25000
+```
+
+> **Note:** Requires a service restart to take effect.
 
 ### Running on Boot (systemd)
 
 To start AeroCore automatically on boot, create a systemd service:
 
 ```bash
-sudo nano /etc/systemd/system/AeroCore.service
+sudo nano /etc/systemd/system/aerocore.service
 ```
 
 ```ini
@@ -125,7 +160,7 @@ Description=AeroCore Fan Controller
 After=network.target
 
 [Service]
-ExecStart=/usr/bin/python3 /home/pi/AeroCore/app.py
+ExecStart=/home/pi/AeroCore/venv/bin/python3 /home/pi/AeroCore/app.py
 WorkingDirectory=/home/pi/AeroCore
 User=pi
 Restart=on-failure
@@ -139,20 +174,48 @@ Then enable and start it:
 
 ```bash
 sudo systemctl daemon-reload
-sudo systemctl enable AeroCore
-sudo systemctl start AeroCore
+sudo systemctl enable aerocore
+sudo systemctl start aerocore
 ```
 
 > **Note:** Adjust the paths above if you cloned the repo to a different location or use a different username.
+
+## Updating
+
+AeroCore can be updated three ways:
+
+**From the dashboard (easiest):**
+
+Admins will see a **System update** panel at the bottom of the dashboard. Click **Check for updates** to pull the latest version from GitHub, then **Restart to apply**.
+
+**From the command line:**
+
+```bash
+cd ~/AeroCore
+./update.sh
+```
+
+**Remote one-liner:**
+
+```bash
+curl -sSL https://raw.githubusercontent.com/Guajardian/AeroCore/main/update.sh | bash
+```
+
+All methods pull the latest code, update dependencies, and restart the service if running.
 
 ## Project Structure
 
 ```
 AeroCore/
 ├── app.py              # Flask server, sensor loop, API routes
+├── install.sh          # One-command installer
+├── update.sh           # Self-update script
 ├── requirements.txt    # Python dependencies
-├── config.json         # Fan curve & poll settings (auto-generated)
-├── users.json          # User credentials (auto-generated)
+├── .gitignore          # Excludes config, credentials, and secrets from git
+├── LICENSE             # GPL v3 license
+├── config.json         # Hardware + fan curve settings (auto-generated, not tracked)
+├── users.json          # User credentials (auto-generated, not tracked)
+├── .secret_key         # Session signing key (auto-generated, not tracked)
 ├── dashboard.html      # Main dashboard template
 ├── login.html          # Login page template
 ├── setup.html          # First-run setup template
@@ -169,10 +232,13 @@ AeroCore/
 | `GET/POST` | `/api/override` | Get or set manual override (speed + enabled) |
 | `POST` | `/api/profiles/<name>` | Apply a fan profile (silent, default, performance) |
 | `GET` | `/api/system` | Pi system stats (CPU temp, uptime, memory) |
-| `GET` | `/api/users` | List all usernames |
-| `POST` | `/api/users` | Add a new user |
-| `DELETE` | `/api/users/<username>` | Delete a user |
+| `GET` | `/api/me` | Current user's username and role |
+| `GET` | `/api/users` | List all users (admin only) |
+| `POST` | `/api/users` | Add a new user (admin only) |
+| `DELETE` | `/api/users/<username>` | Delete a user (admin only) |
 | `POST` | `/api/change-password` | Change current user's password |
+| `POST` | `/api/update` | Pull latest updates from GitHub (admin only) |
+| `POST` | `/api/restart` | Restart the aerocore systemd service (admin only) |
 
 ## Troubleshooting
 
@@ -180,6 +246,7 @@ AeroCore/
 |---------|----------|
 | `ModuleNotFoundError: No module named 'board'` | Install the Adafruit Blinka library: `pip install adafruit-blinka` |
 | `ModuleNotFoundError: No module named 'RPi'` | Install RPi.GPIO: `pip install RPi.GPIO` |
+| `error: externally-managed-environment` | Use a virtual environment — see the Installation section above |
 | `TemplateNotFound` error | Make sure you're running `python app.py` from the AeroCore directory |
 | BME280 not detected | Run `i2cdetect -y 1` to verify the sensor address; ensure I2C is enabled |
 | Fan not spinning | Check that the fan has external power (12V/5V) and shares a ground with the Pi |
