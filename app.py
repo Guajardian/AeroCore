@@ -9,11 +9,8 @@ from flask import Flask, render_template, jsonify, request, redirect, url_for
 from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
 import bcrypt
 
-# ─── Hardware imports ───
-# Comment these out for testing without Pi hardware
-import board
-import adafruit_bme280.basic as adafruit_bme280
-import RPi.GPIO as GPIO
+from sensors import create_sensor
+from fan import create_fan
 
 # ─── Config file ───
 CONFIG_FILE = os.path.join(os.path.dirname(__file__), "config.json")
@@ -21,9 +18,12 @@ USERS_FILE = os.path.join(os.path.dirname(__file__), "users.json")
 SECRET_FILE = os.path.join(os.path.dirname(__file__), ".secret_key")
 
 DEFAULT_CONFIG = {
+    "sensor": "bme280",
+    "platform": "auto",
     "gpio_pin": 18,
     "pwm_freq": 25000,
     "bme280_address": "0x76",
+    "sensor_pin": 4,
     "temp_low": 25.0,
     "temp_high": 45.0,
     "min_duty": 20,
@@ -112,32 +112,15 @@ def load_user(username):
 config = load_config()
 
 try:
-    bme_addr_str = config.get("bme280_address", "0x76")
-    bme_address = int(bme_addr_str, 16)
-except ValueError:
-    print(f"Invalid bme280_address '{bme_addr_str}' in config — using default 0x76")
-    bme_address = 0x76
-
-try:
-    i2c = board.I2C()
-    bme = adafruit_bme280.Adafruit_BME280_I2C(i2c, address=bme_address)
-except Exception as e:
-    print(f"BME280 sensor init failed: {e}")
-    print("Check that I2C is enabled (sudo raspi-config) and the sensor is connected.")
-    print(f"Expected I2C address: {hex(bme_address)} — verify with: i2cdetect -y 1")
+    sensor = create_sensor(config)
+except RuntimeError as e:
+    print(f"\n{e}")
     raise SystemExit(1)
 
-gpio_pin = config.get("gpio_pin", 18)
-pwm_freq = config.get("pwm_freq", 25000)
 try:
-    GPIO.setmode(GPIO.BCM)
-    GPIO.setup(gpio_pin, GPIO.OUT)
-    pwm = GPIO.PWM(gpio_pin, pwm_freq)
-    pwm.start(0)
-except Exception as e:
-    print(f"GPIO/PWM init failed on pin {gpio_pin}: {e}")
-    print("Check that the pin is valid and not in use. You may need to run with sudo")
-    print("or add your user to the gpio group: sudo usermod -aG gpio $USER")
+    fan = create_fan(config)
+except RuntimeError as e:
+    print(f"\n{e}")
     raise SystemExit(1)
 
 # ─── State ───
@@ -170,23 +153,21 @@ def controller_loop():
     global current_data
     while controller_running:
         try:
-            temp = bme.temperature
-            humidity = bme.humidity
-            pressure = bme.pressure
-            speed = get_fan_speed(temp, humidity)
-            pwm.ChangeDutyCycle(speed)
+            reading = sensor.read()
+            speed = get_fan_speed(reading.temperature, reading.humidity)
+            fan.set_speed(speed)
 
             now = datetime.now()
             current_data = {
-                "temp": round(temp, 1),
-                "humidity": round(humidity, 1),
-                "pressure": round(pressure, 1),
+                "temp": reading.temperature,
+                "humidity": reading.humidity,
+                "pressure": reading.pressure,
                 "fan_speed": speed,
                 "timestamp": now.strftime("%H:%M:%S")
             }
             history.append({
-                "temp": round(temp, 1),
-                "humidity": round(humidity, 1),
+                "temp": reading.temperature,
+                "humidity": reading.humidity,
                 "fan_speed": speed,
                 "time": now.strftime("%H:%M:%S")
             })
@@ -211,7 +192,7 @@ def login():
             username = request.form.get("username", "").strip()
             password = request.form.get("password", "").strip()
             if username and password:
-                hashed = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+                hashed = bcrypt.hashpw(password.encode(), bcrypt.gensalt(rounds=10)).decode()
                 users[username] = {"password": hashed, "role": "admin"}
                 save_users(users)
                 login_user(User(username, "admin"))
@@ -305,7 +286,7 @@ def api_users_add():
     users = load_users()
     if username in users:
         return jsonify({"error": "User already exists"}), 409
-    hashed = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+    hashed = bcrypt.hashpw(password.encode(), bcrypt.gensalt(rounds=10)).decode()
     users[username] = {"password": hashed, "role": role}
     save_users(users)
     return jsonify({"status": "ok", "username": username, "role": role}), 201
@@ -344,7 +325,7 @@ def api_change_password():
     pw_hash = users[username]["password"] if isinstance(users[username], dict) else users[username]
     if not bcrypt.checkpw(current_pw.encode(), pw_hash.encode()):
         return jsonify({"error": "Current password is incorrect"}), 403
-    hashed = bcrypt.hashpw(new_pw.encode(), bcrypt.gensalt()).decode()
+    hashed = bcrypt.hashpw(new_pw.encode(), bcrypt.gensalt(rounds=10)).decode()
     users[username]["password"] = hashed
     save_users(users)
     return jsonify({"status": "ok"})
@@ -396,7 +377,7 @@ def api_override():
             override["speed"] = max(0, min(100, int(data["speed"])))
         if override["enabled"]:
             try:
-                pwm.ChangeDutyCycle(override["speed"])
+                fan.set_speed(override["speed"])
             except Exception as e:
                 return jsonify({"error": f"PWM control failed: {e}"}), 500
         return jsonify({"status": "ok", "override": override})
@@ -438,7 +419,9 @@ def api_update():
         pull = subprocess.run(["git", "pull", "origin", "main"], cwd=project_dir,
                               capture_output=True, text=True, check=True, timeout=60)
         # Update dependencies
-        subprocess.run(["pip", "install", "-r", "requirements.txt", "--quiet"],
+        venv_pip = os.path.join(project_dir, "venv", "bin", "pip")
+        pip_cmd = venv_pip if os.path.exists(venv_pip) else "pip"
+        subprocess.run([pip_cmd, "install", "-r", "requirements.txt", "--quiet"],
                        cwd=project_dir, capture_output=True, timeout=120)
         return jsonify({"status": "ok", "message": "Update complete. Restart to apply.",
                         "updated": True, "output": pull.stdout.strip()})
@@ -478,6 +461,4 @@ if __name__ == "__main__":
         app.run(host="0.0.0.0", port=5000)
     finally:
         controller_running = False
-        pwm.ChangeDutyCycle(0)
-        pwm.stop()
-        GPIO.cleanup()
+        fan.cleanup()

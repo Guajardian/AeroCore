@@ -22,14 +22,17 @@ A Raspberry Pi-powered smart fan controller with a live web dashboard. AeroCore 
 - **User management** — Add and remove users from the admin panel
 - **First-run setup** — Guided admin account creation on first launch
 - **Self-update** — Update from the dashboard, command line, or a remote one-liner
-- **Configurable hardware** — GPIO pin, PWM frequency, and BME280 address stored in `config.json` (survives updates)
+- **Multi-sensor support** — BME280, BMP280, DHT22, DHT11, DS18B20, SHT31 — set `"sensor"` in `config.json`
+- **Platform auto-detection** — Runs on Raspberry Pi with GPIO, or any machine in mock mode
+- **Mock mode** — Full dashboard with simulated data — no hardware needed for testing or demos
+- **Configurable hardware** — GPIO pin, PWM frequency, sensor address all stored in `config.json` (survives updates)
 
 ## Hardware
 
 | Component | Details |
 |-----------|---------|
-| **Board** | Raspberry Pi (any model with GPIO + I2C) |
-| **Sensor** | BME280 (I2C, address `0x76` by default — configurable) |
+| **Board** | Raspberry Pi (any model with GPIO + I2C) — or any machine in mock mode |
+| **Sensor** | BME280 (default), BMP280, DHT22, DHT11, DS18B20, SHT31 — configurable |
 | **Fan** | 4-pin PWM fan on GPIO 18 (configurable) |
 
 ### Wiring
@@ -95,13 +98,16 @@ python app.py
 
 ## Configuration
 
-Fan curve and hardware settings are stored in `config.json`. Fan curve settings can be changed from the dashboard; hardware settings (`gpio_pin`, `pwm_freq`, `bme280_address`) are edited in `config.json` directly:
+Fan curve and hardware settings are stored in `config.json`. Fan curve settings can be changed from the dashboard; hardware settings are edited in `config.json` directly:
 
 | Setting | Default | Description |
 |---------|---------|-------------|
+| `sensor` | `"bme280"` | Sensor type: `bme280`, `bmp280`, `dht22`, `dht11`, `ds18b20`, `sht31`, or `mock` |
+| `platform` | `"auto"` | Fan control: `auto` (detect GPIO), `rpi`, or `mock` (no hardware) |
 | `gpio_pin` | 18 | GPIO pin for the PWM fan signal (BCM numbering) |
 | `pwm_freq` | 25000 | PWM frequency in Hz (25 kHz is standard for 4-pin fans) |
-| `bme280_address` | `"0x76"` | I2C address of the BME280 sensor (`"0x76"` or `"0x77"`) |
+| `bme280_address` | `"0x76"` | I2C address for BME280/BMP280 (`"0x76"` or `"0x77"`) |
+| `sensor_pin` | 4 | GPIO pin for DHT11/DHT22 sensors |
 | `temp_low` | 25.0 °C | Fans off below this temperature |
 | `temp_high` | 45.0 °C | 100% fan speed at this temperature |
 | `min_duty` | 20% | Minimum duty cycle when fans are active |
@@ -110,7 +116,39 @@ Fan curve and hardware settings are stored in `config.json`. Fan curve settings 
 | `humidity_high` | 70% | Humidity threshold for fan trigger |
 | `active_profile` | default | Currently active fan profile |
 
-> **Note:** Changes to `gpio_pin`, `pwm_freq`, and `bme280_address` require a service restart to take effect. All other settings apply immediately.
+> **Note:** Changes to `sensor`, `platform`, `gpio_pin`, `pwm_freq`, `bme280_address`, and `sensor_pin` require a service restart to take effect. All other settings apply immediately.
+
+## Supported Sensors
+
+| Sensor | `"sensor"` value | Measures | Pip package |
+|--------|-------------------|----------|-------------|
+| BME280 | `"bme280"` | Temp, humidity, pressure | `adafruit-circuitpython-bme280` (included) |
+| BMP280 | `"bmp280"` | Temp, pressure | `adafruit-circuitpython-bmp280` |
+| DHT22 / AM2302 | `"dht22"` | Temp, humidity | `adafruit-circuitpython-dht` |
+| DHT11 | `"dht11"` | Temp, humidity | `adafruit-circuitpython-dht` |
+| DS18B20 | `"ds18b20"` | Temp only | None (uses 1-Wire kernel driver) |
+| SHT31 | `"sht31"` | Temp, humidity | `adafruit-circuitpython-sht31d` |
+| Mock | `"mock"` | Simulated data | None |
+
+To switch sensors, update `config.json` and install the required pip package:
+
+```bash
+source ~/AeroCore/venv/bin/activate
+pip install adafruit-circuitpython-dht    # example for DHT22
+```
+
+Then set `"sensor": "dht22"` in `config.json` and restart.
+
+### Mock Mode
+
+To run AeroCore without any hardware (for testing, demos, or development on any machine):
+
+```json
+"sensor": "mock",
+"platform": "mock"
+```
+
+This generates realistic simulated data and skips all GPIO access.
 
 ## Customization
 
@@ -208,6 +246,8 @@ All methods pull the latest code, update dependencies, and restart the service i
 ```
 AeroCore/
 ├── app.py              # Flask server, sensor loop, API routes
+├── sensors.py          # Sensor driver abstraction layer
+├── fan.py              # Fan/PWM control abstraction layer
 ├── install.sh          # One-command installer
 ├── update.sh           # Self-update script
 ├── requirements.txt    # Python dependencies
